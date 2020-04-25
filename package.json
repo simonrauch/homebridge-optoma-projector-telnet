@@ -19,7 +19,9 @@
     "optoma",
     "rs232",
     "telnet",
-    "homebridge"
+    "homebridge",
+    "homekit",
+    "UHD3000A"
   ],
   "engines": {
     "node": ">=10.17.0",
