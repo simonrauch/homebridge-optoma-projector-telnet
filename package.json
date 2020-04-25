@@ -1,7 +1,7 @@
 {
   "name": "homebridge-optoma-projector-telnet",
   "displayName": "Homebridge Optoma Projector Telnet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A plugin for Homebridge, to control Optoma Projectors via Telnet.",
   "main": "index.js",
   "repository": {
