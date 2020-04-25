@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "description": "A plugin for Homebridge, to control Optoma Projectors via Telnet.",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/simonrauch/homebridge-optoma-projector-telnet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/simonrauch/homebridge-optoma-projector-telnet/issues"
+  },
   "scripts": {
     "test": "echo \"no test specified\""
   },
