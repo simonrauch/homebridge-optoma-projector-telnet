@@ -1,4 +1,6 @@
 [![npm](https://badgen.net/npm/v/homebridge-optoma-projector-telnet/latest)](https://www.npmjs.com/package/homebridge-optoma-projector-telnet) 
+[![npm](https://badgen.net/npm/dt/homebridge-optoma-projector-telnet)](https://www.npmjs.com/package/homebridge-optoma-projector-telnet)
+
 
 # Homebridge Optoma Projector Telnet
 
@@ -30,5 +32,6 @@ Add your projector in your Hombridge `config.js`:
   * `name` - the accessories name
   * `address` - IP address of the projector
   * `port` (optional) - Telnet port of the projector (default value: `23`)
+  * `projectorId` (optional) - The ID of the projector (default value: `1`)
   * `model` (optional) - The projectors model (default value: `unkown`)
   * `serialNumber` (optional) - The projectors serial number (default value: `unknown`)

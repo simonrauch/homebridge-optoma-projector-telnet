@@ -17,7 +17,7 @@ class ProjectorAccessory {
 
     this.socket = new net.Socket();
 
-    this.socket.connect({ host: config.address, port: config.port || 23 }, () => {
+    this.socket.connect({ host: config.address, port: parseInt(config.port) || 23 }, () => {
       this.socket.on('data', this.handleData.bind(this));
     });
 
@@ -48,14 +48,29 @@ class ProjectorAccessory {
 
   setOnCharacteristicHandler(value, callback) {
     if (value) {
-      this.socket.write('~0100 1\r\n');
+      this.socket.write(this.getBootCommand());
+      this.log('Sending boot command');
     } else {
-      this.socket.write('~0100 2\r\n');
+      this.socket.write(this.getShutdownCommand());
+      this.log('Sending shutdown command');
     }
     callback(null)
   }
 
   getOnCharacteristicHandler(callback) {
     callback(null, this.isOn)
+  }
+
+  getBootCommand() {
+    return `~${this.getProjectorId()}00 1\r\n`;
+  }
+
+  getShutdownCommand() {
+    return `~${this.getProjectorId()}00 2\r\n`;
+  }
+
+  getProjectorId() {
+    let id = parseInt(this.config.projectorId) || 1;
+    return ("0" + id).slice(-2);
   }
 }
