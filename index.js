@@ -4,6 +4,20 @@ let Service, Characteristic
 
 const net = require('net')
 
+const CONNECTION_TIMEOUT = 30000
+
+const UP_MESSAGES = [
+  'INFO1',
+  'OK1',
+  'Ok1'
+]
+
+const DOWN_MESSAGES = [
+  'INFO0',
+  'OK0',
+  'Ok0'
+]
+
 module.exports = (homebridge) => {
   Service = homebridge.hap.Service
   Characteristic = homebridge.hap.Characteristic
@@ -14,19 +28,10 @@ class ProjectorAccessory {
   constructor(log, config) {
     this.log = log
     this.config = config
+    this.error = true
+    this.connect()
     this.service = new Service.Switch(this.config.name)
-  }
-
-  getSocketOptions() {
-    return {
-      host: this.config.address,
-      port: parseInt(this.config.port) || 23
-    }
-  }
-
-  handleError() {
-    this.log('Socket error')
-    this.isOn = 0
+    this.updateStatus(0)
   }
 
   getServices() {
@@ -42,75 +47,122 @@ class ProjectorAccessory {
     return [informationService, this.service]
   }
 
-  setOnCharacteristicHandler(value, callback) {
-    if (this.commandInProgress) {
-      callback('command already running')
-      return
+  connect() {
+    if (this.socket) {
+      this.socket.end()
+      this.socket.destroy()
     }
 
-    this.commandInProgress = true;
+    const socketOptions = {
+      host: this.config.address,
+      port: parseInt(this.config.port) || 23
+    }
 
-    setTimeout(() => {
-      this.commandInProgress = false;
-    }, 3500)
+    this.socket = new net.Socket();
+    this.socket.on('error', this.handleError.bind(this))
+    this.socket.on('timeout', this.handleError.bind(this))
+    this.socket.on('data', this.handleData.bind(this))
+    this.socket.setTimeout(CONNECTION_TIMEOUT)
 
-    let socket = this.getDefaultCommandSocket()
+    this.log('Trying to connect...')
+    this.socket.connect(socketOptions, () => {
+      this.socket.setTimeout(0)
+      this.log('Projector is connected.')
+      this.error = false
+      this.socket.write(this.getStatusCommand())
+    })
 
-    socket.on('close', (hadError) => {
-      callback((hadError) ? 'error' : null, this.isOn)
+  }
+
+  updateStatus(status) {
+    this.isOn = status;
+    this.service.getCharacteristic(Characteristic.On).updateValue(status);
+  }
+
+  getSocketOptions() {
+    return {
+      host: this.config.address,
+      port: parseInt(this.config.port) || 23
+    }
+  }
+
+  handleError() {
+    this.log('Socket error')
+    this.error = true
+    this.updateStatus(0)
+
+    if (!this.reconnectTimeout) {
+      this.reconnectTimeout = true
+      this.connect()
+      setTimeout(() => {
+        this.reconnectTimeout = false
+      }, CONNECTION_TIMEOUT)
+    }
+  }
+
+  handleData(data) {
+    this.log(data.toString())
+    if (this.messageInData(data, UP_MESSAGES)) {
+      this.log('Received UP message.')
+      this.updateStatus(1)
+    }
+
+    if (this.messageInData(data, DOWN_MESSAGES)) {
+      this.log('Received DOWN message.')
+      this.updateStatus(0)
+    }
+
+    if (this.commandCallback) {
+      if (data.includes('P')) {
+        this.commandCallback(null)
+      }
+      this.commandCallback = null
+    }
+  }
+
+  messageInData(data, messages) {
+    for (const message of messages) {
+      if (data.includes(message)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  setOnCharacteristicHandler(value, callback) {
+    if (this.error) {
+      callback(true)
       return
-    })
+    }
+    const oldValue = value
 
-    socket.on('data', (data) => {
-      if (data.includes('P') || data.includes('F')) {
-        this.isOn = value
-        socket.end()
-      }
-    })
+    if (value) {
+      this.socket.write(this.getBootCommand());
+      this.log('Sending boot command')
+    } else {
+      this.socket.write(this.getShutdownCommand())
+      this.log('Sending shutdown command')
+    }
 
-    socket.connect(this.getSocketOptions(), () => {
-      if (value) {
-        socket.write(this.getBootCommand());
-        this.log('Sending boot command')
-      } else {
-        socket.write(this.getShutdownCommand())
-        this.log('Sending shutdown command')
+    this.commandCallback = callback
+    setTimeout(() => {
+      if (this.commandCallback) {
+        this.handleError()
+        this.updateStatus(oldValue)
+        this.commandCallback(true)
+        this.commandCallback = null
       }
-    })
+    }, 1000)
+
+    this.updateStatus(value)
   }
 
   getOnCharacteristicHandler(callback) {
-    if (this.fetchInProgress) {
-      callback(null, this.isOn)
+    if (this.error) {
+      callback(true)
       return
     }
-    this.fetchInProgress = true;
-    setTimeout(() => {
-      this.fetchInProgress = false;
-    }, 3500)
-
-    let socket = this.getDefaultCommandSocket()
-
-    socket.on('close', (hadError) => {
-      callback((hadError) ? 'error' : null, this.isOn)
-      return
-    })
-
-    socket.on('data', (data) => {
-      if (data.includes('OK1') || data.includes('Ok1')) {
-        this.isOn = 1
-      }
-      if (data.includes('OK0') || data.includes('Ok0')) {
-        this.isOn = 0
-      }
-      if (data.includes('P') || data.includes('F')) {
-        socket.end()
-      }
-    })
-
-    socket.connect(this.getSocketOptions(), () => {
-      socket.write(this.getStatusCommand())
-    })
+    callback(null, this.isOn)
   }
 
   getBootCommand() {
@@ -128,19 +180,5 @@ class ProjectorAccessory {
   getProjectorId() {
     let id = parseInt(this.config.projectorId) || 1
     return ("0" + id).slice(-2)
-  }
-
-  getDefaultCommandSocket() {
-    let socket = new net.Socket()
-
-    socket.setTimeout(3000);
-
-    socket.on('timeout', () => {
-      socket.end();
-    });
-
-    socket.on('error', this.handleError.bind(this))
-
-    return socket
   }
 }
