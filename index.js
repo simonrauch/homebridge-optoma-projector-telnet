@@ -109,6 +109,9 @@ class ProjectorAccessory {
       if (data.includes('P')) {
         this.commandCallback(null)
       }
+      if (data.includes('F')) {
+        this.commandCallback(true)
+      }
       this.commandCallback = null
     }
   }
@@ -127,7 +130,7 @@ class ProjectorAccessory {
       callback(true)
       return
     }
-    const oldValue = value
+    let oldValue = value
 
     if (value) {
       this.socket.write(this.getBootCommand());
@@ -145,7 +148,7 @@ class ProjectorAccessory {
         this.commandCallback(true)
         this.commandCallback = null
       }
-    }, 1000)
+    }, 5000)
 
     this.updateStatus(value)
   }
