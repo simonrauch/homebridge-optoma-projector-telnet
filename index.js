@@ -4,7 +4,6 @@ let Service, Characteristic
 
 const net = require('net')
 
-const CONNECTION_TIMEOUT = 30000
 
 const UP_MESSAGES = [
   'INFO1',
@@ -25,7 +24,9 @@ module.exports = (homebridge) => {
 }
 
 class ProjectorAccessory {
+
   constructor(log, config) {
+    this.connectionTimeout = 30000
     this.log = log
     this.config = config
     this.error = true
@@ -62,7 +63,7 @@ class ProjectorAccessory {
     this.socket.on('error', this.handleError.bind(this))
     this.socket.on('timeout', this.handleError.bind(this))
     this.socket.on('data', this.handleData.bind(this))
-    this.socket.setTimeout(CONNECTION_TIMEOUT)
+    this.socket.setTimeout(this.connectionTimeout)
 
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
