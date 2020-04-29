@@ -90,18 +90,10 @@ class ProjectorAccessory {
     this.log('Socket error')
     this.error = true
     this.updateStatus(0)
-
-    if (!this.reconnectTimeout) {
-      this.reconnectTimeout = true
-      this.connect()
-      setTimeout(() => {
-        this.reconnectTimeout = false
-      }, CONNECTION_TIMEOUT)
-    }
+    this.connect()
   }
 
   handleData(data) {
-    this.log(data.toString())
     if (this.messageInData(data, UP_MESSAGES)) {
       this.log('Received UP message.')
       this.updateStatus(1)
