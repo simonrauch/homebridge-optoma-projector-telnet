@@ -4,6 +4,9 @@ let Service, Characteristic
 
 const net = require('net')
 
+const PORT = 23 
+const POLL = 5000
+const CONNECTION_TIMEOUT = 30000
 
 const UP_MESSAGES = [
   'INFO1',
@@ -26,9 +29,9 @@ module.exports = (homebridge) => {
 class ProjectorAccessory {
 
   constructor(log, config) {
-    this.connectionTimeout = 30000
     this.log = log
     this.config = config
+    this.poll = true
     this.error = true
     this.connect()
     this.service = new Service.Switch(this.config.name)
@@ -56,28 +59,35 @@ class ProjectorAccessory {
 
     const socketOptions = {
       host: this.config.address,
-      port: parseInt(this.config.port) || 23
+      port: parseInt(this.config.port) || PORT
     }
 
-    this.socket = new net.Socket();
+    this.socket = new net.Socket()
     this.socket.on('error', this.handleError.bind(this))
-    this.socket.on('timeout', this.handleError.bind(this))
+    this.socket.on('timeout', this.handleTimeout.bind(this))
     this.socket.on('data', this.handleData.bind(this))
-    this.socket.setTimeout(this.connectionTimeout)
+    this.socket.setTimeout(CONNECTION_TIMEOUT)
 
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
       this.socket.setTimeout(0)
-      this.log('Projector is connected.')
+      this.log('is connected.')
       this.error = false
       this.socket.write(this.getStatusCommand())
+      setInterval(this.pollStatus.bind(this), POLL)
     })
+  }
 
+  pollStatus() {
+    if (!this.poll) return
+    this.socket.write(this.getStatusCommand())
   }
 
   updateStatus(status) {
-    this.isOn = status;
-    this.service.getCharacteristic(Characteristic.On).updateValue(status);
+    if (this.isOn === status || !this.poll) return
+    this.isOn = status
+    this.service.getCharacteristic(Characteristic.On).updateValue(status)
+    this.log(`turned ${!!this.isOn ? 'ON' : 'OFF'}`)
   }
 
   getSocketOptions() {
@@ -89,30 +99,46 @@ class ProjectorAccessory {
 
   handleError() {
     this.log('Socket error')
+    this.resetConnection()
+  }
+
+  handleTimeout() {
+    this.log('Socket timeout')
+    this.resetConnection()
+  }
+
+  resetConnection() {
     this.error = true
     this.updateStatus(0)
     this.connect()
+    this.poll = true
+  }
+
+  handleCallback(data, value) {
+    this.log('commandCallback')
+    this.log(data)
+    this.poll = true
+    this.commandCallback(value)
+    this.commandCallback = null
   }
 
   handleData(data) {
     if (this.messageInData(data, UP_MESSAGES)) {
-      this.log('Received UP message.')
       this.updateStatus(1)
     }
 
     if (this.messageInData(data, DOWN_MESSAGES)) {
-      this.log('Received DOWN message.')
       this.updateStatus(0)
     }
 
+    this.log(data)
+
     if (this.commandCallback) {
       if (data.includes('P')) {
-        this.commandCallback(null)
+        handleCallback(data, null)
+      } else if (data.includes('F')) {
+        handleCallback(data, true)
       }
-      if (data.includes('F')) {
-        this.commandCallback(true)
-      }
-      this.commandCallback = null
     }
   }
 
@@ -127,34 +153,40 @@ class ProjectorAccessory {
 
   setOnCharacteristicHandler(value, callback) {
     if (this.error) {
+      this.log('ERROR: setOnCharacteristicHandler')
       callback(true)
       return
     }
+
     let oldValue = value
 
     if (value) {
-      this.socket.write(this.getBootCommand());
       this.log('Sending boot command')
+      this.socket.write(this.getBootCommand())
     } else {
-      this.socket.write(this.getShutdownCommand())
       this.log('Sending shutdown command')
+      this.socket.write(this.getShutdownCommand())
     }
 
     this.commandCallback = callback
     setTimeout(() => {
+      this.poll = true
       if (this.commandCallback) {
+        this.log('connection timeout')
         this.handleError()
         this.updateStatus(oldValue)
         this.commandCallback(true)
         this.commandCallback = null
       }
-    }, 5000)
+    }, CONNECTION_TIMEOUT)
 
     this.updateStatus(value)
+    this.poll = false
   }
 
   getOnCharacteristicHandler(callback) {
     if (this.error) {
+      this.log('ERROR: getOnCharacteristicHandler')
       callback(true)
       return
     }
