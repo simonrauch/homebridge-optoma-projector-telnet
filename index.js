@@ -115,9 +115,12 @@ class ProjectorAccessory {
     this.poll = true
   }
 
+  formatResponse(data) {
+    return String(data).split('\r\n').slice(0, -1).join()
+  }
+
   handleCallback(data, value) {
-    this.log('commandCallback')
-    this.log(data)
+    this.log(`Response ${formatResponse(data)}`)
     this.poll = true
     this.commandCallback(value)
     this.commandCallback = null
@@ -132,7 +135,7 @@ class ProjectorAccessory {
       this.updateStatus(0)
     }
 
-    // this.log(String(data).split('\r\n').slice(0, -1).join())
+    // this.log(`${formatResponse(data)}`)
 
     if (this.commandCallback) {
       if (data.includes('P')) {
