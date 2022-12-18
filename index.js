@@ -5,8 +5,9 @@ let Service, Characteristic
 const net = require('net')
 
 const PORT = 23 
-const POLL = 5000
+const PAUSE_UPDATE_TIME = 3000
 const CONNECTION_TIMEOUT = 30000
+const DEFAULT_LOG_LEVEL = 1
 
 const UP_MESSAGES = [
   'INFO1',
@@ -20,6 +21,8 @@ const DOWN_MESSAGES = [
   'Ok0'
 ]
 
+const formatData = (data) => String(data).split('\r\n').slice(0, -1).join()
+
 module.exports = (homebridge) => {
   Service = homebridge.hap.Service
   Characteristic = homebridge.hap.Characteristic
@@ -29,13 +32,21 @@ module.exports = (homebridge) => {
 class ProjectorAccessory {
 
   constructor(log, config) {
-    this.log = log
     this.config = config
-    this.poll = true
+    this.logLevel = config.logLevel || DEFAULT_LOG_LEVEL
+
+    this.log = (msg, level = DEFAULT_LOG_LEVEL) => {
+      if (level<=this.logLevel) log(msg)
+    }
+
+    this.enableStatusUpdates = true
     this.error = true
+    this.data = null
+
+    this.log(`Log level: ${this.logLevel}`)
     this.connect()
     this.service = new Service.Switch(this.config.name)
-    this.updateStatus(0)
+    // this.updateStatus(0)
   }
 
   getServices() {
@@ -59,42 +70,30 @@ class ProjectorAccessory {
 
     const socketOptions = {
       host: this.config.address,
-      port: parseInt(this.config.port) || PORT
+      port: parseInt(this.config.port) || PORT,
+      noDelay: true,
     }
 
     this.socket = new net.Socket()
     this.socket.on('error', this.handleError.bind(this))
     this.socket.on('timeout', this.handleTimeout.bind(this))
     this.socket.on('data', this.handleData.bind(this))
+    this.socket.on('ready', () => this.log('Connected'))
     this.socket.setTimeout(CONNECTION_TIMEOUT)
 
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
       this.socket.setTimeout(0)
-      this.log('is connected.')
       this.error = false
       this.socket.write(this.getStatusCommand())
-      setInterval(this.pollStatus.bind(this), POLL)
     })
   }
 
-  pollStatus() {
-    if (!this.poll) return
-    this.socket.write(this.getStatusCommand())
-  }
-
   updateStatus(status) {
-    if (this.isOn === status || !this.poll) return
+    if (this.isOn === status || !this.enableStatusUpdates) return
     this.isOn = status
     this.service.getCharacteristic(Characteristic.On).updateValue(status)
-    this.log(!!this.isOn ? 'ON' : 'OFF')
-  }
-
-  getSocketOptions() {
-    return {
-      host: this.config.address,
-      port: parseInt(this.config.port) || PORT
-    }
+    this.log(!!status ? 'ON' : 'OFF')
   }
 
   handleError() {
@@ -110,23 +109,20 @@ class ProjectorAccessory {
   resetConnection() {
     this.log('Reset Connection')
     this.error = true
-    this.updateStatus(0)
+    // this.updateStatus(0)
     this.connect()
-    this.poll = true
-  }
-
-  formatResponse(data) {
-    return String(data).split('\r\n').slice(0, -1).join()
+    
   }
 
   handleCallback(data, value) {
-    this.log(`Response ${formatResponse(data)}`)
-    this.poll = true
     this.commandCallback(value)
     this.commandCallback = null
   }
 
   handleData(data) {
+    if (this.data !== String(data)) this.log(`Received: ${formatData(data)}`, 2)
+    this.data = String(data)
+    
     if (this.messageInData(data, UP_MESSAGES)) {
       this.updateStatus(1)
     }
@@ -135,13 +131,11 @@ class ProjectorAccessory {
       this.updateStatus(0)
     }
 
-    // this.log(`${formatResponse(data)}`)
-
     if (this.commandCallback) {
       if (data.includes('P')) {
-        handleCallback(data, null)
+        this.handleCallback(data, null)
       } else if (data.includes('F')) {
-        handleCallback(data, true)
+        this.handleCallback(data, true)
       }
     }
   }
@@ -155,6 +149,15 @@ class ProjectorAccessory {
     return false
   }
 
+  pauseUpdate() {
+    this.log('Disable status updates', 2)
+    this.enableStatusUpdates = false
+    setTimeout(() => {
+      this.log('Enable status updates', 2)
+      this.enableStatusUpdates = true
+    }, PAUSE_UPDATE_TIME)
+  }
+
   setOnCharacteristicHandler(value, callback) {
     if (this.error) {
       this.log('ERROR: setOnCharacteristicHandler')
@@ -162,19 +165,23 @@ class ProjectorAccessory {
       return
     }
 
-    let oldValue = value
-
     if (value) {
-      this.log(`Sending boot command ${this.getBootCommand()}`)
-      this.socket.write(this.getBootCommand())
+      this.updateStatus(1)
+      const bootCommand = this.getBootCommand()
+      this.log(`Sending boot command (${formatData(bootCommand)})`, 2)
+      this.socket.write(bootCommand)
     } else {
-      this.log(`Sending shutdown command ${this.getShutdownCommand()}`)
-      this.socket.write(this.getShutdownCommand())
+      this.updateStatus(0)
+      const shutdownCommand = this.getShutdownCommand()
+      this.log(`Sending shutdown command (${formatData(shutdownCommand)})`, 2)
+      this.socket.write(shutdownCommand)
     }
 
+    this.pauseUpdate()
+
+    let oldValue = value
     this.commandCallback = callback
     setTimeout(() => {
-      this.poll = true
       if (this.commandCallback) {
         this.updateStatus(oldValue)
         this.handleTimeout()
@@ -182,9 +189,6 @@ class ProjectorAccessory {
         this.commandCallback = null
       }
     }, CONNECTION_TIMEOUT)
-
-    this.updateStatus(value)
-    this.poll = false
   }
 
   getOnCharacteristicHandler(callback) {
