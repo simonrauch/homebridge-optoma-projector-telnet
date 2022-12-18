@@ -40,7 +40,7 @@ class ProjectorAccessory {
     }
 
     this.enableStatusUpdates = true
-    this.error = true
+    this.connected = false
     this.data = null
 
     this.log(`Log level: ${this.logLevel}`)
@@ -84,7 +84,7 @@ class ProjectorAccessory {
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
       this.socket.setTimeout(0)
-      this.error = false
+      this.connected = true
       this.socket.write(this.getStatusCommand())
     })
   }
@@ -108,7 +108,7 @@ class ProjectorAccessory {
 
   resetConnection() {
     this.log('Reset Connection')
-    this.error = true
+    this.connected = false
     // this.updateStatus(0)
     this.connect()
     
@@ -159,8 +159,7 @@ class ProjectorAccessory {
   }
 
   setOnCharacteristicHandler(value, callback) {
-    if (this.error) {
-      this.log('ERROR: setOnCharacteristicHandler')
+    if (this.connected) {
       callback(true)
       return
     }
@@ -192,8 +191,7 @@ class ProjectorAccessory {
   }
 
   getOnCharacteristicHandler(callback) {
-    if (this.error) {
-      this.log('ERROR: getOnCharacteristicHandler')
+    if (this.connected) {
       callback(true)
       return
     }
