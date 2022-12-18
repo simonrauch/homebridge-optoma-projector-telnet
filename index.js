@@ -87,13 +87,13 @@ class ProjectorAccessory {
     if (this.isOn === status || !this.poll) return
     this.isOn = status
     this.service.getCharacteristic(Characteristic.On).updateValue(status)
-    this.log(`turned ${!!this.isOn ? 'ON' : 'OFF'}`)
+    this.log(!!this.isOn ? 'ON' : 'OFF')
   }
 
   getSocketOptions() {
     return {
       host: this.config.address,
-      port: parseInt(this.config.port) || 23
+      port: parseInt(this.config.port) || PORT
     }
   }
 
@@ -108,6 +108,7 @@ class ProjectorAccessory {
   }
 
   resetConnection() {
+    this.log('Reset Connection')
     this.error = true
     this.updateStatus(0)
     this.connect()
@@ -131,7 +132,7 @@ class ProjectorAccessory {
       this.updateStatus(0)
     }
 
-    this.log(data)
+    // this.log(String(data).split('\r\n').slice(0, -1).join())
 
     if (this.commandCallback) {
       if (data.includes('P')) {
@@ -161,10 +162,10 @@ class ProjectorAccessory {
     let oldValue = value
 
     if (value) {
-      this.log('Sending boot command')
+      this.log(`Sending boot command ${this.getBootCommand()}`)
       this.socket.write(this.getBootCommand())
     } else {
-      this.log('Sending shutdown command')
+      this.log(`Sending shutdown command ${this.getShutdownCommand()}`)
       this.socket.write(this.getShutdownCommand())
     }
 
@@ -172,9 +173,8 @@ class ProjectorAccessory {
     setTimeout(() => {
       this.poll = true
       if (this.commandCallback) {
-        this.log('connection timeout')
-        this.handleError()
         this.updateStatus(oldValue)
+        this.handleTimeout()
         this.commandCallback(true)
         this.commandCallback = null
       }
