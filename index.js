@@ -159,7 +159,7 @@ class ProjectorAccessory {
   }
 
   setOnCharacteristicHandler(value, callback) {
-    if (this.connected) {
+    if (!this.connected) {
       callback(true)
       return
     }
@@ -191,7 +191,7 @@ class ProjectorAccessory {
   }
 
   getOnCharacteristicHandler(callback) {
-    if (this.connected) {
+    if (!this.connected) {
       callback(true)
       return
     }
