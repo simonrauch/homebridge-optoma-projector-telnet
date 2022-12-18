@@ -35,3 +35,5 @@ Add your projector in your Hombridge `config.js`:
   * `projectorId` (optional) - The ID of the projector (default value: `1`)
   * `model` (optional) - The projectors model (default value: `unkown`)
   * `serialNumber` (optional) - The projectors serial number (default value: `unknown`)
+  * `logLevel` (optional) - 0: off, 1: default, 3: verbose (default value: `1`)
+  
