@@ -7,9 +7,8 @@ const net = require('net')
 const ON = 1
 const OFF = 0
 const PORT = 23 
-const RETRY_DELAY = 500
 const PAUSE_UPDATE_TIME = 3000
-const CONNECTION_TIMEOUT = 30000
+const CONNECTION_TIMEOUT = 1000
 const DEFAULT_LOG_LEVEL = 1
 const DEBUG = 2
 
@@ -46,6 +45,7 @@ class ProjectorAccessory {
     this.enableStatusUpdates = true
     this.connected = false
     this.data = null
+    this.isOn = null
 
     this.log(`Log level: ${this.logLevel}`)
     this.connect()
@@ -74,16 +74,17 @@ class ProjectorAccessory {
 
     const socketOptions = {
       host: this.config.address,
-      port: parseInt(this.config.port) || PORT,
+      port: Number(this.config.port) || PORT,
       noDelay: true,
+      keepAlive: true,
     }
 
     this.socket = new net.Socket()
     this.socket.on('error', this.handleError.bind(this))
     this.socket.on('timeout', this.handleTimeout.bind(this))
     this.socket.on('data', this.handleData.bind(this))
-    this.socket.on('ready', () => this.log('Connected'))
-    this.socket.setTimeout(CONNECTION_TIMEOUT)
+    this.socket.on('ready', this.handleReady.bind(this))
+    // this.socket.setTimeout(CONNECTION_TIMEOUT * 20)
 
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
@@ -100,6 +101,13 @@ class ProjectorAccessory {
     this.log(!!status ? 'ON' : 'OFF')
   }
 
+  handleReady() {
+    this.log('Connected')
+    if (this.isOn !== null) {
+      this.sendStatusCmd[Number(this.isOn)].bind(this)()
+    }
+  }
+
   handleError() {
     this.log('Socket error')
     this.resetConnection()
@@ -113,7 +121,6 @@ class ProjectorAccessory {
   resetConnection() {
     this.log('Reset Connection')
     this.connected = false
-    // this.updateStatus(OFF)
     this.connect()
     
   }
@@ -124,8 +131,11 @@ class ProjectorAccessory {
   }
 
   handleData(data) {
-    if (this.data !== String(data)) this.log(`Received: ${formatData(data)}`, DEBUG)
-    this.data = String(data)
+    this.log(`Received: ${formatData(data)}`, DEBUG)
+    if (this.data !== String(data) && this.logLevel !== DEBUG) {
+      this.log(`Received: ${formatData(data)}`)
+      this.data = String(data)
+    }
     
     if (this.messageInData(data, UP_MESSAGES)) {
       this.updateStatus(ON)
@@ -176,11 +186,7 @@ class ProjectorAccessory {
       return
     }
 
-    const sendStatusCmd = this.sendStatusCmd[Number(value)]
-    sendStatusCmd()
-    
-    // Sometimes this needs a second kick
-    setTimeout(() => sendStatusCmd(), RETRY_DELAY)
+    this.sendStatusCmd[Number(value)].bind(this)()
 
     this.pauseUpdate()
 
@@ -188,10 +194,8 @@ class ProjectorAccessory {
 
     setTimeout(() => {
       if (this.commandCallback) {
-        this.updateStatus(1 - value)
-        this.handleTimeout()
-        this.commandCallback(true)
-        this.commandCallback = null
+        this.log('No Respose')
+        this.resetConnection()
       }
     }, CONNECTION_TIMEOUT)
   }
