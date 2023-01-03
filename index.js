@@ -7,9 +7,12 @@ const net = require('net')
 const ON = 1
 const OFF = 0
 const PORT = 23
+const MAX_RETRIES = 3
+const SECOND = 1000
 const POLL_INTERVAL = 1000
 const PAUSE_UPDATE_TIME = 9000
-const CONNECTION_TIMEOUT = 1000
+const CONNECTION_TIMEOUT = 30000
+const CMD_TIMEOUT = 1500
 const DEFAULT_LOG_LEVEL = 1
 const DEBUG = 2
 
@@ -38,6 +41,9 @@ class ProjectorAccessory {
   constructor(log, config) {
     this.config = config
     this.logLevel = config.logLevel || DEFAULT_LOG_LEVEL
+    this.pollInterval = config.pollInterval * SECOND || POLL_INTERVAL
+    this.maxRetries = config.maxRetries || MAX_RETRIES
+    this.retryCount = 0
 
     this.log = (msg, level = DEFAULT_LOG_LEVEL) => {
       if (level<=this.logLevel) log(msg)
@@ -89,6 +95,7 @@ class ProjectorAccessory {
     this.socket.on('timeout', this.handleTimeout.bind(this))
     this.socket.on('data', this.handleData.bind(this))
     this.socket.on('ready', this.handleReady.bind(this))
+    this.socket.setTimeout(CONNECTION_TIMEOUT)
     
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
@@ -105,32 +112,35 @@ class ProjectorAccessory {
   }
 
   updateStatus(status) {
-    if (this.isOn === status || !this.enableStatusUpdates) return
-    this.isOn = status
+    if (!this.enableStatusUpdates) return
     this.service.getCharacteristic(Characteristic.On).updateValue(status)
-    this.log(!!status ? 'ON' : 'OFF')
+
+    if (this.isOn === status) return
+    this.isOn = status
+    this.log(Boolean(status) ? 'ON' : 'OFF')
   }
 
   handleReady() {
     this.log('Connected')
-    this.poll = setInterval(this.pollStatus.bind(this), POLL_INTERVAL)
+    if (this.pollInterval !== 0) {
+      this.poll = setInterval(this.pollStatus.bind(this), this.pollInterval)
+    }
     if (this.isOn !== null) {
       this.sendStatusCmd[Number(this.isOn)].bind(this)()
     }
   }
 
   handleError() {
-    this.log('Socket error', DEBUG)
+    this.log('Socket error')
     this.resetConnection()
   }
 
   handleTimeout() {
-    this.log('Socket timeout', DEBUG)
+    this.log('Socket timeout')
     this.resetConnection()
   }
 
   resetConnection() {
-    this.log('Reset Connection')
     this.connected = false
     this.connect()
     
@@ -150,9 +160,7 @@ class ProjectorAccessory {
     
     if (this.messageInData(data, UP_MESSAGES)) {
       this.updateStatus(ON)
-    }
-
-    if (this.messageInData(data, DOWN_MESSAGES)) {
+    } else if (this.messageInData(data, DOWN_MESSAGES)) {
       this.updateStatus(OFF)
     }
 
@@ -205,10 +213,15 @@ class ProjectorAccessory {
 
     setTimeout(() => {
       if (this.commandCallback) {
-        this.log('No Respose', DEBUG)
+        if (this.retryCount++ >= this.maxRetries) {
+          this.log('Connection failure')
+          callback(true)
+          return
+        }
+        this.log(`No Respose (${this.retryCount})`)
         this.resetConnection()
       }
-    }, CONNECTION_TIMEOUT)
+    }, CMD_TIMEOUT)
   }
 
   getOnCharacteristicHandler(callback) {
