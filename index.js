@@ -4,10 +4,14 @@ let Service, Characteristic
 
 const net = require('net')
 
+const ON = 1
+const OFF = 0
 const PORT = 23 
+const RETRY_DELAY = 500
 const PAUSE_UPDATE_TIME = 3000
 const CONNECTION_TIMEOUT = 30000
 const DEFAULT_LOG_LEVEL = 1
+const DEBUG = 2
 
 const UP_MESSAGES = [
   'INFO1',
@@ -46,7 +50,7 @@ class ProjectorAccessory {
     this.log(`Log level: ${this.logLevel}`)
     this.connect()
     this.service = new Service.Switch(this.config.name)
-    // this.updateStatus(0)
+    // this.updateStatus(OFF)
   }
 
   getServices() {
@@ -109,7 +113,7 @@ class ProjectorAccessory {
   resetConnection() {
     this.log('Reset Connection')
     this.connected = false
-    // this.updateStatus(0)
+    // this.updateStatus(OFF)
     this.connect()
     
   }
@@ -120,15 +124,15 @@ class ProjectorAccessory {
   }
 
   handleData(data) {
-    if (this.data !== String(data)) this.log(`Received: ${formatData(data)}`, 2)
+    if (this.data !== String(data)) this.log(`Received: ${formatData(data)}`, DEBUG)
     this.data = String(data)
     
     if (this.messageInData(data, UP_MESSAGES)) {
-      this.updateStatus(1)
+      this.updateStatus(ON)
     }
 
     if (this.messageInData(data, DOWN_MESSAGES)) {
-      this.updateStatus(0)
+      this.updateStatus(OFF)
     }
 
     if (this.commandCallback) {
@@ -140,23 +144,31 @@ class ProjectorAccessory {
     }
   }
 
-  messageInData(data, messages) {
-    for (const message of messages) {
-      if (data.includes(message)) {
-        return true
-      }
-    }
-    return false
-  }
+  messageInData = (data, messages) => messages.some(message => data.includes(message))
 
   pauseUpdate() {
-    this.log('Disable status updates', 2)
+    this.log('Disable status updates', DEBUG)
     this.enableStatusUpdates = false
     setTimeout(() => {
-      this.log('Enable status updates', 2)
+      this.log('Enable status updates', DEBUG)
       this.enableStatusUpdates = true
     }, PAUSE_UPDATE_TIME)
   }
+
+  sendStatusCmd = [
+    () => {
+      const shutdownCommand = this.getShutdownCommand()
+      this.log(`Sending shutdown command (${formatData(shutdownCommand)})`, DEBUG)
+      this.socket.write(shutdownCommand)
+      this.updateStatus(OFF)
+    },
+    () => {
+      const bootCommand = this.getBootCommand()
+      this.log(`Sending boot command (${formatData(bootCommand)})`, DEBUG)
+      this.socket.write(bootCommand)
+      this.updateStatus(ON)
+    },
+  ]
 
   setOnCharacteristicHandler(value, callback) {
     if (!this.connected) {
@@ -164,25 +176,19 @@ class ProjectorAccessory {
       return
     }
 
-    if (value) {
-      this.updateStatus(1)
-      const bootCommand = this.getBootCommand()
-      this.log(`Sending boot command (${formatData(bootCommand)})`, 2)
-      this.socket.write(bootCommand)
-    } else {
-      this.updateStatus(0)
-      const shutdownCommand = this.getShutdownCommand()
-      this.log(`Sending shutdown command (${formatData(shutdownCommand)})`, 2)
-      this.socket.write(shutdownCommand)
-    }
+    const sendStatusCmd = this.sendStatusCmd[Number(value)]
+    sendStatusCmd()
+    
+    // Sometimes this needs a second kick
+    setTimeout(() => sendStatusCmd(), RETRY_DELAY)
 
     this.pauseUpdate()
 
-    let oldValue = value
     this.commandCallback = callback
+
     setTimeout(() => {
       if (this.commandCallback) {
-        this.updateStatus(oldValue)
+        this.updateStatus(1 - value)
         this.handleTimeout()
         this.commandCallback(true)
         this.commandCallback = null
