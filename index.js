@@ -108,18 +108,18 @@ class ProjectorAccessory {
   }
 
   pollStatus() {
-    if (this.enableStatusUpdates){
-      if (this.pollRequestCount === MAX_POLL_RETRIES) {
-        this.log(`No Respose (polling)`, DEBUG)
-        this.resetConnection()
-        return
-      }
+    if (!this.enableStatusUpdates) return
 
-      const getStatusCommand = this.getStatusCommand()
-      this.log(`Request status (${formatData(getStatusCommand)}) ${this.pollRequestCount}`, DEBUG)
-      this.socket.write(getStatusCommand)
-      this.pollRequestCount++
+    if (this.pollRequestCount === MAX_POLL_RETRIES) {
+      this.log(`No Respose (polling)`, DEBUG)
+      this.resetConnection()
+      return
     }
+
+    const getStatusCommand = this.getStatusCommand()
+    this.log(`Request status (${formatData(getStatusCommand)}) ${this.pollRequestCount}`, DEBUG)
+    this.socket.write(getStatusCommand)
+    this.pollRequestCount++
   }
 
   updateStatus(status) {
