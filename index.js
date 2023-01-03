@@ -6,8 +6,9 @@ const net = require('net')
 
 const ON = 1
 const OFF = 0
-const PORT = 23 
-const PAUSE_UPDATE_TIME = 3000
+const PORT = 23
+const POLL_INTERVAL = 1000
+const PAUSE_UPDATE_TIME = 9000
 const CONNECTION_TIMEOUT = 1000
 const DEFAULT_LOG_LEVEL = 1
 const DEBUG = 2
@@ -46,11 +47,11 @@ class ProjectorAccessory {
     this.connected = false
     this.data = null
     this.isOn = null
+    this.poll = null
 
     this.log(`Log level: ${this.logLevel}`)
     this.connect()
     this.service = new Service.Switch(this.config.name)
-    // this.updateStatus(OFF)
   }
 
   getServices() {
@@ -72,6 +73,10 @@ class ProjectorAccessory {
       this.socket.destroy()
     }
 
+    if (this.poll) {
+      clearInterval(this.poll)
+    }
+
     const socketOptions = {
       host: this.config.address,
       port: Number(this.config.port) || PORT,
@@ -84,14 +89,19 @@ class ProjectorAccessory {
     this.socket.on('timeout', this.handleTimeout.bind(this))
     this.socket.on('data', this.handleData.bind(this))
     this.socket.on('ready', this.handleReady.bind(this))
-    // this.socket.setTimeout(CONNECTION_TIMEOUT * 20)
-
+    
     this.log('Trying to connect...')
     this.socket.connect(socketOptions, () => {
       this.socket.setTimeout(0)
       this.connected = true
       this.socket.write(this.getStatusCommand())
     })
+  }
+
+  pollStatus() {
+    if (this.enableStatusUpdates){
+      this.socket.write(this.getStatusCommand())
+    }
   }
 
   updateStatus(status) {
@@ -103,18 +113,19 @@ class ProjectorAccessory {
 
   handleReady() {
     this.log('Connected')
+    this.poll = setInterval(this.pollStatus.bind(this), POLL_INTERVAL)
     if (this.isOn !== null) {
       this.sendStatusCmd[Number(this.isOn)].bind(this)()
     }
   }
 
   handleError() {
-    this.log('Socket error')
+    this.log('Socket error', DEBUG)
     this.resetConnection()
   }
 
   handleTimeout() {
-    this.log('Socket timeout')
+    this.log('Socket timeout', DEBUG)
     this.resetConnection()
   }
 
@@ -194,7 +205,7 @@ class ProjectorAccessory {
 
     setTimeout(() => {
       if (this.commandCallback) {
-        this.log('No Respose')
+        this.log('No Respose', DEBUG)
         this.resetConnection()
       }
     }, CONNECTION_TIMEOUT)
