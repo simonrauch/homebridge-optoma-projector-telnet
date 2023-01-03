@@ -10,6 +10,7 @@ const PORT = 23
 const MAX_RETRIES = 3
 const SECOND = 1000
 const POLL_INTERVAL = 1000
+const MAX_POLL_RETRIES = 10
 const PAUSE_UPDATE_TIME = 9000
 const CONNECTION_TIMEOUT = 30000
 const CMD_TIMEOUT = 1500
@@ -51,6 +52,7 @@ class ProjectorAccessory {
 
     this.enableStatusUpdates = true
     this.connected = false
+    this.pollRequestCount = 0
     this.data = null
     this.isOn = null
     this.poll = null
@@ -107,7 +109,16 @@ class ProjectorAccessory {
 
   pollStatus() {
     if (this.enableStatusUpdates){
-      this.socket.write(this.getStatusCommand())
+      if (this.pollRequestCount === MAX_POLL_RETRIES) {
+        this.log(`No Respose (polling)`, DEBUG)
+        this.resetConnection()
+        return
+      }
+
+      const getStatusCommand = this.getStatusCommand()
+      this.log(`Request status (${formatData(getStatusCommand)}) ${this.pollRequestCount}`, DEBUG)
+      this.socket.write(getStatusCommand)
+      this.pollRequestCount++
     }
   }
 
@@ -142,6 +153,7 @@ class ProjectorAccessory {
 
   resetConnection() {
     this.connected = false
+    this.pollRequestCount = 0
     this.connect()
     
   }
@@ -169,7 +181,9 @@ class ProjectorAccessory {
         this.handleCallback(data, null)
       } else if (data.includes('F')) {
         this.handleCallback(data, true)
-      }
+      } 
+    } else {
+      this.pollRequestCount = 0
     }
   }
 
