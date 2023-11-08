@@ -40,6 +40,8 @@ module.exports = (homebridge) => {
 class ProjectorAccessory {
 
   constructor(log, config) {
+    this.preflight(log, config)
+
     this.config = config
     this.logLevel = config.logLevel || DEFAULT_LOG_LEVEL
     this.pollInterval = config.pollInterval * SECOND || POLL_INTERVAL
@@ -60,6 +62,15 @@ class ProjectorAccessory {
     this.log(`Log level: ${this.logLevel}`)
     this.connect()
     this.service = new Service.Switch(this.config.name)
+  }
+
+  preflight(log, config) {
+    if (config.name === undefined) {
+      log.error("ERROR: name not found in config")
+    }
+    if (config.address === undefined) {
+      log.error("ERROR: address not found in config")
+    }
   }
 
   getServices() {
