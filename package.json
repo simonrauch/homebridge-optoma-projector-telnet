@@ -1,7 +1,7 @@
 {
   "name": "homebridge-optoma-projector-telnet",
   "displayName": "Optoma Projector Telnet",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A plugin for Homebridge, to control Optoma Projectors via Telnet.",
   "main": "index.js",
   "repository": {
@@ -26,6 +26,9 @@
     "node": ">=10.17.0",
     "homebridge": ">=0.4.22"
   },
-  "authors":[ "Simon Rauch <sr@simonrauch.com>", "David J. Bradshaw <dave@bradshaw.net>" ],
+  "authors": [
+    "Simon Rauch <sr@simonrauch.com>",
+    "David J. Bradshaw <dave@bradshaw.net>"
+  ],
   "license": "MIT"
 }
